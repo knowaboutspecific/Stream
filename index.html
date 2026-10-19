@@ -31,3 +31,91 @@ main{padding:8px 5vw 56px}
 .fail{position:absolute;inset:0;display:grid;place-content:center;gap:8px;padding:20px;text-align:center;background:#000}
 .fail a{color:var(--amber)}
 .info{padding:18px 22px 22px;max-width:70ch}
+.info h2{font:700 1.7rem/1.2 var(--serif)}
+.info p{margin-top:8px}
+#close{position:absolute;top:10px;right:14px;padding:4px 12px;border:0;border-radius:6px;background:rgba(0,0,0,.6);color:#fff;font-size:1.6rem;cursor:pointer}
+.wrap{position:relative;width:min(960px,100%);max-height:100%;overflow:auto;border-radius:8px}
+footer{padding:22px 5vw;border-top:1px solid var(--line);color:var(--muted);font-size:.88rem}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="sign">Matinee</div>
+  <input id="q" type="search" placeholder="Search by title" aria-label="Search by title">
+</header>
+<main>
+  <div class="chips" id="chips"></div>
+  <div class="grid" id="grid"></div>
+</main>
+<footer>Add only films you’re allowed to show: public domain, Creative Commons, or your own. Each film lists its license.</footer>
+
+<div id="modal" role="dialog" aria-modal="true" aria-label="Movie player">
+  <div class="wrap">
+    <button id="close" aria-label="Close player">×</button>
+    <div class="box">
+      <div class="screen" id="screen"></div>
+      <div class="info" id="info"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ADD YOUR FILMS HERE.
+   "src"   = direct video file (.mp4 or .webm), or a list of backup links tried in order
+   "embed" = an embeddable player page, such as https://archive.org/embed/ITEM_ID
+   Always fill in "license" so viewers can see why the film is free to watch. */
+const B = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/";
+const movies = [
+  {title:"Big Buck Bunny", year:2008, genre:"Animation", license:"CC BY 3.0, Blender Foundation", desc:"A gentle giant rabbit gets even with three bullying rodents.", src:[B+"BigBuckBunny.mp4","https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4"], poster:B+"images/BigBuckBunny.jpg"},
+  {title:"Sintel", year:2010, genre:"Fantasy", license:"CC BY 3.0, Blender Foundation", desc:"A young woman searches the world for the dragon she once befriended.", src:B+"Sintel.mp4", poster:B+"images/Sintel.jpg"},
+  {title:"Tears of Steel", year:2012, genre:"Sci-fi", license:"CC BY 3.0, Blender Foundation", desc:"Warriors and scientists try to save the world from killer robots.", src:B+"TearsOfSteel.mp4", poster:B+"images/TearsOfSteel.jpg"},
+  {title:"Elephants Dream", year:2006, genre:"Animation", license:"CC BY 2.5, Blender Foundation", desc:"Two strangers explore a strange machine world.", src:B+"ElephantsDream.mp4", poster:B+"images/ElephantsDream.jpg"}
+  /* Example of an Internet Archive film (check its license first):
+  ,{title:"Your Film", year:1950, genre:"Drama", license:"Public domain", desc:"Short description.", embed:"https://archive.org/embed/ITEM_ID"} */
+];
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const genres = ["All", ...new Set(movies.map(m => m.genre))];
+let genre = "All", term = "";
+
+function render(){
+  $("#chips").innerHTML = genres.map(g =>
+    `<button class="chip" aria-pressed="${g === genre}" data-g="${esc(g)}">${esc(g)}</button>`).join("");
+  const list = movies.map((m, i) => ({...m, i})).filter(m =>
+    (genre === "All" || m.genre === genre) && m.title.toLowerCase().includes(term));
+  $("#grid").innerHTML = list.length ? list.map(m => {
+    const h = (m.i * 67 + 190) % 360;
+    const art = `linear-gradient(to top,rgba(0,0,0,.65),transparent 45%)${m.poster ? `,url("${esc(m.poster)}")` : ""},linear-gradient(150deg,hsl(${h} 45% 38%),hsl(${(h + 50) % 360} 50% 18%))`;
+    return `<button class="film" data-i="${m.i}"><span class="poster" style='--art:${art}'></span><b>${esc(m.title)}</b><small>${m.year}, ${esc(m.genre)}</small></button>`;
+  }).join("") : `<p class="empty">No films match. Try another title or clear the genre.</p>`;
+}
+
+function play(m){
+  const srcs = [].concat(m.src || []);
+  $("#screen").innerHTML = m.embed
+    ? `<iframe src="${esc(m.embed)}" allowfullscreen title="${esc(m.title)}"></iframe>`
+    : `<video controls playsinline>${srcs.map(s => `<source src="${esc(s)}">`).join("")}</video>`;
+  const v = $("#screen video");
+  if (v && v.lastElementChild) {
+    v.lastElementChild.addEventListener("error", () => $("#screen").insertAdjacentHTML("beforeend",
+      `<div class="fail"><p>This video couldn’t load here.</p><a href="${esc(srcs[0])}" target="_blank" rel="noopener">Try opening the video file directly</a></div>`));
+    v.play().catch(() => {});
+  }
+  $("#info").innerHTML = `<h2>${esc(m.title)}</h2><p class="sub">${m.year}, ${esc(m.genre)}</p><p>${esc(m.desc)}</p><p class="sub">License: ${esc(m.license)}</p>`;
+  $("#modal").classList.add("open");
+  $("#close").focus();
+}
+function stop(){ $("#modal").classList.remove("open"); $("#screen").innerHTML = ""; }
+
+$("#chips").onclick = e => { if (e.target.dataset.g) { genre = e.target.dataset.g; render(); } };
+$("#q").oninput = e => { term = e.target.value.trim().toLowerCase(); render(); };
+$("#grid").onclick = e => { const b = e.target.closest(".film"); if (b) play(movies[b.dataset.i]); };
+$("#close").onclick = stop;
+$("#modal").onclick = e => { if (e.target.id === "modal") stop(); };
+addEventListener("keydown", e => { if (e.key === "Escape") stop(); });
+render();
+</script>
+</body>
+</html>
